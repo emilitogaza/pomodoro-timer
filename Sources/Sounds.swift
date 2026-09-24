@@ -1,7 +1,7 @@
 import AVFoundation
 
-// Same ringtones as the web pomodoro in kumpan-intra, same frequencies and
-// envelopes, just rendered into a PCM buffer instead of Web Audio.
+// Ringtones are synthesized, no audio files. Each one is a few sine/triangle
+// notes with an envelope, rendered into a PCM buffer the first time it plays.
 enum Sound: String, CaseIterable, Identifiable {
     case bell, brightBell, phoneRing, pulsingAlarm, chime
     var id: Self { self }
@@ -32,8 +32,9 @@ enum Sound: String, CaseIterable, Identifiable {
         case .pulsingAlarm:
             (0..<20).map { Note(freq: 1000, start: Double($0) * 0.25, length: 0.15, gain: 0.3, wave: .square, decays: false) }
         case .chime:
-            [523.25, 659.25, 783.99, 1046.5].enumerated().map { i, f in
-                Note(freq: f, start: Double(i) * 0.18, length: 1.2, gain: 0.4, wave: .triangle)
+            // C5 E5 G5 C6, tiny pause, G5 C6
+            [523.25, 659.25, 783.99, 1046.5, 783.99, 1046.5].enumerated().map { i, f in
+                Note(freq: f, start: Double(i) * 0.18 + (i >= 4 ? 0.12 : 0), length: 1.2, gain: 0.4, wave: .triangle)
             }
         }
     }

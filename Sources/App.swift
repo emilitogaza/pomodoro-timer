@@ -36,7 +36,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func togglePanel() {
-        if panel.isVisible { return panel.orderOut(nil) }
+        if panel.isVisible { return panel.close() }
         guard let button = item.button, let buttonWindow = button.window, let screen = buttonWindow.screen else { return }
         let anchor = buttonWindow.convertToScreen(button.convert(button.bounds, to: nil))
         let x = min(anchor.minX - 14, screen.visibleFrame.maxX - panel.frame.width)
@@ -45,9 +45,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
-// Borderless, transparent, content hangs from the top. Closes when you click
-// outside or hit Esc, with a small delay so the close animation can finish.
+// Borderless, transparent, content hangs from the top. Closes on Esc or a click
+// outside. Not on losing focus, since the sound picker's menu steals focus too.
 final class FloatingPanel: NSPanel {
+    static let willClose = Notification.Name("FloatingPanel.willClose")
+    private var clickOutside: Any?
+
     init(content: some View) {
         super.init(contentRect: NSRect(x: 0, y: 0, width: 320, height: 640),
                    styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
@@ -60,9 +63,22 @@ final class FloatingPanel: NSPanel {
     }
 
     override var canBecomeKey: Bool { true }
-    override func cancelOperation(_ sender: Any?) { resignKey() }
-    override func resignKey() {
-        super.resignKey()
+    override func cancelOperation(_ sender: Any?) { close() }
+
+    override func makeKeyAndOrderFront(_ sender: Any?) {
+        super.makeKeyAndOrderFront(sender)
+        // Global monitor only sees clicks in other apps, so our own menus don't count.
+        clickOutside = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
+            self?.close()
+        }
+    }
+
+    override func close() {
+        guard isVisible else { return }
+        clickOutside.map(NSEvent.removeMonitor)
+        clickOutside = nil
+        NotificationCenter.default.post(name: Self.willClose, object: self)
+        // Give the SwiftUI close animation a moment before the window goes.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { self.orderOut(nil) }
     }
 }
@@ -81,16 +97,18 @@ struct PanelView: View {
     @State private var isOpen = false
 
     var body: some View {
-        // Don't fade glass with .opacity, it flickers. Adding/removing it inside a
-        // GlassEffectContainer gives the proper materialize animation instead.
-        GlassEffectContainer(spacing: spacing) {
+        // The container batches all tiles into one backdrop, which is what makes the
+        // transitions smooth. Spacing must stay 0: it's the distance at which tiles
+        // start blending into each other, and with it near the gap size every gap
+        // got a faint half-glass fill. Also never fade glass with .opacity, it flickers.
+        GlassEffectContainer(spacing: 0) {
             if isOpen { panel.transition(.scale(0.94, anchor: .top)) }
         }
         .frame(width: 320)
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
             withAnimation(.spring(duration: 0.4, bounce: 0.25)) { isOpen = true }
         }
-        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didResignKeyNotification)) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: FloatingPanel.willClose)) { _ in
             withAnimation(.easeIn(duration: 0.2)) { isOpen = false }
         }
     }
@@ -126,7 +144,7 @@ struct TimerView: View {
                 IconCircle(symbol: model.phase.symbol, active: true)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(model.phase.label).font(.headline)
-                    Text("Session \(model.cycleProgress + (model.phase == .focus ? 1 : 0)) of \(model.longBreakInterval)")
+                    Text("Session \(model.sessionNumber) of \(model.longBreakInterval)")
                         .font(.subheadline).foregroundStyle(.secondary)
                 }
             }

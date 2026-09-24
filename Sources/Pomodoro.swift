@@ -48,8 +48,12 @@ final class Pomodoro {
     var isRunning: Bool { endDate != nil }
     var remaining: TimeInterval { endDate.map { max(0, $0.timeIntervalSince(now)) } ?? pausedRemaining }
     var progress: Double { 1 - remaining / duration(phase) }
-    // Focus sessions done so far in this long-break cycle.
-    var cycleProgress: Int { completedFocus % longBreakInterval }
+    // 1-based session number for the label. A break belongs to the focus
+    // session before it, so the long break reads "4 of 4", not "0 of 4".
+    var sessionNumber: Int {
+        let done = phase == .focus ? completedFocus : completedFocus - 1
+        return done % longBreakInterval + 1
+    }
 
     var timeString: String {
         let s = Int(remaining.rounded(.up))
