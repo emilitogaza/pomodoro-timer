@@ -1,0 +1,6 @@
+.build/
+Pomodoro.app/
+.DS_Store
+*.xcodeproj
+.swiftpm/
+Pomodoro.dmg
