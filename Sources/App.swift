@@ -1,5 +1,6 @@
 import ServiceManagement
 import SwiftUI
+import UserNotifications
 
 @main
 struct PomodoroApp: App {
@@ -11,7 +12,7 @@ struct PomodoroApp: App {
 // there's no way to turn it off. A status item + our own see-through panel
 // lets the tiles float on their own, like Control Center.
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     private let model = Pomodoro()
     private let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private lazy var panel = FloatingPanel(content: PanelView(model: model))
@@ -23,6 +24,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         button.imagePosition = .imageLeading
         button.font = .monospacedDigitSystemFont(ofSize: 0, weight: .regular)
         updateLabel()
+        UNUserNotificationCenter.current().delegate = self
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert]) { _, _ in }
+    }
+
+    // Show it even while our panel is open (app counts as frontmost then).
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
+        [.banner, .list]
     }
 
     // Show the time in the menu bar only while it's actually ticking.

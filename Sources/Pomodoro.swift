@@ -1,4 +1,5 @@
 import SwiftUI
+import UserNotifications
 
 enum Phase {
     case focus, shortBreak, longBreak
@@ -104,6 +105,7 @@ final class Pomodoro {
 
     private func advance(playSound: Bool) {
         let wasRunning = isRunning
+        let finished = phase
         if phase == .focus {
             completedFocus += 1
             phase = completedFocus % longBreakInterval == 0 ? .longBreak : .shortBreak
@@ -114,7 +116,19 @@ final class Pomodoro {
         pausedRemaining = duration(phase)
         if autoStart && (playSound || wasRunning) { toggle() }
         // Play last. If audio hiccups the timer state is already moved on.
-        if playSound { player.play(sound) }
+        if playSound {
+            notify("\(finished.label) done", "Next up: \(phase.label)")
+            player.play(sound)
+        }
+    }
+
+    // Stays on screen until dismissed because Info.plist asks for the Alerts style.
+    // Same identifier each time, so a new one replaces the last instead of piling up.
+    private func notify(_ title: String, _ body: String) {
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: "phase-done", content: content, trigger: nil))
     }
 
     private func syncIdle() {

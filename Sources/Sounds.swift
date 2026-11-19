@@ -50,24 +50,32 @@ private struct Note {
 
 @MainActor
 final class SoundPlayer {
-    private let engine = AVAudioEngine()
-    private let node = AVAudioPlayerNode()
+    private var engine: AVAudioEngine?
     private let format = AVAudioFormat(standardFormatWithSampleRate: 44_100, channels: 1)!
     private var cache: [Sound: AVAudioPCMBuffer] = [:]
 
-    init() {
+    func play(_ sound: Sound) {
+        // Fresh engine per play, stopped when the sound ends. An engine is wired for
+        // the output device it started on and may not restart once that device goes
+        // away (headset off), and one left running keeps the Mac from idle sleeping.
+        engine?.stop()
+        let engine = AVAudioEngine(), node = AVAudioPlayerNode()
+        self.engine = engine
         engine.attach(node)
         engine.connect(node, to: engine.mainMixerNode, format: format)
-    }
-
-    func play(_ sound: Sound) {
-        // If the engine won't start (output device changed etc), bail. node.play()
-        // would throw an ObjC exception we can't catch and take the timer down with it.
-        if !engine.isRunning { try? engine.start() }
-        guard engine.isRunning else { return }
+        // If the engine won't start, bail. node.play() would throw an ObjC
+        // exception we can't catch and take the timer down with it.
+        guard (try? engine.start()) != nil else { return }
         let buffer = cache[sound] ?? render(sound.notes)
         cache[sound] = buffer
-        node.scheduleBuffer(buffer, at: nil, options: .interrupts)
+        let id = ObjectIdentifier(engine)
+        node.scheduleBuffer(buffer, at: nil, completionCallbackType: .dataPlayedBack) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, let current = self.engine, ObjectIdentifier(current) == id else { return }
+                current.stop()
+                self.engine = nil
+            }
+        }
         node.play()
     }
 
